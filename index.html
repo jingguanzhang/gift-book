@@ -164,7 +164,7 @@
       }
 
       .amount-numeric,
-      .mark{
+      .mark {
         color: #555;
         letter-spacing: 1px;
         writing-mode: lr;
@@ -173,16 +173,16 @@
         flex: 1;
       }
 
-      .mark{
-           color: var(--primary-color);
-          white-space: nowrap;
-          line-height: 1.2;
-          height: 2.5em;
-          display: flex;
-          flex-direction: column;
-          justify-content: center;
-          position: absolute;
-          bottom: 1vw;
+      .mark {
+        color: var(--primary-color);
+        white-space: nowrap;
+        line-height: 1.2;
+        height: 2.5em;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        position: absolute;
+        bottom: 1vw;
       }
       .themed-edit-area {
         background-color: var(--primary-bg-light);
@@ -420,18 +420,18 @@
         .theme-solemn #print-view {
           filter: grayscale(100%);
         }
-        .mark{
+        .mark {
           display: none;
-        }
-        .amount-chinese.scale,
-        .name.scale {
-          font-size: 14pt;
-          letter-spacing: -2px;
-          padding: 5px 0;
         }
         .print-book-content .gift-book-row:nth-child(3) {
           max-height: 82mm;
         }
+      }
+      .amount-chinese.scale,
+      .name.scale {
+        font-size: 14pt;
+        letter-spacing: -2px;
+        padding: 5px 0;
       }
       .amount-numeric.scale {
         letter-spacing: 0.5px;
@@ -888,32 +888,93 @@
         /**
          * 从数据库加载当前事项的所有礼金记录。
          */
+       /**
+         * 从数据库加载当前事项的所有礼金记录。
+         * 优化：使用虚拟滚动思想，首次只解密当前页需要的数据
+         */
         async function loadGiftsForCurrentEvent() {
           if (!db || !currentEvent) return;
           try {
+            // 显示加载提示 (保持不变)
+            const loadingMsg = document.createElement('div');
+            loadingMsg.id = 'loading-indicator';
+            loadingMsg.className = 'fixed top-4 right-4 bg-blue-500 text-white px-4 py-2 rounded shadow-lg z-50';
+            loadingMsg.textContent = '正在加载数据...';
+            document.body.appendChild(loadingMsg);
+
             const transaction = db.transaction("gifts", "readonly");
             const index = transaction.objectStore("gifts").index("eventId");
             const encryptedGifts = await promisifyRequest(index.getAll(currentEvent.id));
 
-            gifts = [];
-            const BATCH_SIZE = 50;
+            // 先只存储加密数据，不立即解密 (保持不变)
+            gifts = encryptedGifts.map(g => ({ ...g, data: null, _needsDecrypt: true }));
 
-            for (let i = 0; i < encryptedGifts.length; i += BATCH_SIZE) {
-              const batch = encryptedGifts.slice(i, i + BATCH_SIZE);
-              const decryptedBatch = batch.map((g) => ({ ...g, data: decryptData(g.encryptedData, currentPassword) })).filter((g) => g.data !== null);
+            // --- 核心修改 START ---
 
-              gifts.push(...decryptedBatch);
+            // 1. 计算总页数，并将当前页设置为最后一页
+            const totalPages = Math.ceil(gifts.length / ITEMS_PER_PAGE) || 1;
+            currentPage = totalPages;
 
-              // 让出控制权给浏览器，避免长时间阻塞
-              if (i + BATCH_SIZE < encryptedGifts.length) {
-                await new Promise((resolve) => setTimeout(resolve, 0));
+            // 2. 计算最后一页的起始和结束索引
+            const lastPageStart = (currentPage - 1) * ITEMS_PER_PAGE;
+            const lastPageEnd = gifts.length; // 最后一页的结尾就是数组的结尾
+
+            // 3. 只解密最后一页的数据
+            for (let i = lastPageStart; i < lastPageEnd; i++) {
+              if (gifts[i] && gifts[i]._needsDecrypt) {
+                gifts[i].data = decryptData(gifts[i].encryptedData, currentPassword);
+                gifts[i]._needsDecrypt = false;
               }
             }
 
-            currentPage = Math.ceil(gifts.length / ITEMS_PER_PAGE) || 1;
-            render();
+            // --- 核心修改 END ---
+
+            render(); // 渲染最后一页
+
+            // 移除加载提示
+            document.getElementById('loading-indicator')?.remove();
+
+            // 后台异步解密剩余数据
+            if (gifts.length > 0) {
+              // 从头开始解密，它会自动跳过已经解密的最后一页
+              requestIdleCallback(() => decryptRemainingGifts(0));
+            }
           } catch (error) {
             console.error("加载礼金列表失败:", error);
+            document.getElementById('loading-indicator')?.remove();
+          }
+        }
+
+        /**
+         * 后台异步解密剩余数据
+         */
+        async function decryptRemainingGifts(startIndex) {
+          const BATCH_SIZE = 50;
+          for (let i = startIndex; i < gifts.length; i += BATCH_SIZE) {
+            const batchEnd = Math.min(i + BATCH_SIZE, gifts.length);
+            for (let j = i; j < batchEnd; j++) {
+              if (gifts[j]._needsDecrypt) {
+                gifts[j].data = decryptData(gifts[j].encryptedData, currentPassword);
+                gifts[j]._needsDecrypt = false;
+              }
+            }
+            // 让出控制权，避免阻塞UI
+            await new Promise(resolve => setTimeout(resolve, 0));
+          }
+        }
+
+        /**
+         * 确保当前页数据已解密
+         */
+        function ensureCurrentPageDecrypted() {
+          const start = (currentPage - 1) * ITEMS_PER_PAGE;
+          const end = Math.min(start + ITEMS_PER_PAGE, gifts.length);
+          
+          for (let i = start; i < end; i++) {
+            if (gifts[i]._needsDecrypt) {
+              gifts[i].data = decryptData(gifts[i].encryptedData, currentPassword);
+              gifts[i]._needsDecrypt = false;
+            }
           }
         }
 
@@ -950,6 +1011,11 @@
           // 如果超出事项时间范围，需要输入管理密码才能补录
           if (isOutOfTime) {
             const authorized = await requestAdminPassword("礼金补录", "当前已超出有效录入时间，请输入管理密码进行补录。");
+             // 用户取消则直接退出，不提示错误
+            if (authorized === null) {
+              closeModal();
+              return;
+            }
             if (!authorized) {
               closeModal();
               return showAlert("密码错误", "管理密码不正确，无法录入。");
@@ -986,7 +1052,7 @@
             const content = `<p class="text-sm text-gray-600 mb-3">${message}</p>
                        <input type="password" id="override-password" class="w-full p-2 border rounded themed-ring" placeholder="请输入管理密码">`;
             const actions = [
-              { text: "取消", class: "themed-button-secondary border px-4 py-2 rounded", handler: () => resolve(false) },
+              { text: "取消", class: "themed-button-secondary border px-4 py-2 rounded", handler: () => resolve(null) },
               {
                 text: "确认",
                 class: "themed-button-primary px-4 py-2 rounded",
@@ -1034,14 +1100,14 @@
             const nameCell = document.createElement("div");
             nameCell.className = "book-cell name-cell";
             if (gift?.data) {
-              const isModified = gift.data.history && gift.data.history.length > 0;
+              const isModified = gift.data.history?.some((h) => h.type === "correction");
               const isRemarks = gift.data.remarks;
 
               let statusIndicators = `<div class="mark">
-                ${isRemarks && '<p>*已备注</p>' || ''}
-                ${isModified && '<p>*已修改</p>' || ''}
+                ${(isRemarks && "<p>*已备注</p>") || ""}
+                ${(isModified && "<p>*已修改</p>") || ""}
               </div>`;
-              
+
               nameCell.innerHTML = `<div class="name${gift.data.name.length > 4 ? " scale" : ""}">${gift.data.name}</div>${statusIndicators}`;
               nameCell.dataset.giftIndex = giftIndex;
             }
@@ -1161,7 +1227,7 @@
          * @param {boolean} [isError=true] - 是否为错误提示（目前仅影响样式）
          * @param {function} [callback] - 用户点击“确定”后执行的回调函数
          */
-        function showAlert(title, message,  callback = null) {
+        function showAlert(title, message, callback = null) {
           showModal(title, `<p>${message}</p>`, [
             {
               text: "确定",
@@ -1299,7 +1365,7 @@
           }
 
           // 3. 显示弹窗
-          showModal(`${g.name} 的礼金详情 ${hasHistory ? '<p class="text-sm text-orange-600 font-normal">(警告：此宾客数据存在修改，请自行验证合法性！)</p>' : ""}`, modalContent, [
+          showModal(`${g.name} 的礼金详情 ${hasHistory ? '<p class="text-sm text-orange-600 font-normal">（警告：此宾客数据存在修改，请自行验证数据真实性！）</p>' : ""}`, modalContent, [
             { text: "关闭", class: "themed-button-secondary border px-4 py-2 rounded" },
           ]);
 
@@ -1468,21 +1534,21 @@
                     </div>`;
             saveHandler = async () => {
               const newRemarks = document.getElementById("inline-edit-remarks").value.trim();
-              if (newRemarks === (g.remarks || "")) return cancelHandler(); // 无变化则取消
+              if (newRemarks === (g.remarks || "")) return cancelHandler();
 
-              // 根据备注内容生成更智能的日志
               const oldRemarksText = g.remarks || "（空）";
               const newRemarksText = newRemarks || "（空）";
               const changeLog = `将备注由 “${oldRemarksText}” 修改为 “${newRemarksText}”`;
 
-              await performUpdateWithHistory(giftIndex, { remarks: newRemarks }, changeLog);
+              // <-- 关键修改：调用新的、专门的备注更新函数
+              await performRemarkUpdate(giftIndex, newRemarks, changeLog);
             };
           }
 
           // 执行DOM替换和事件绑定
           const targetArea = document.getElementById(targetAreaId);
           if (targetArea) {
-           targetArea.innerHTML = editHtml;// 将显示区域替换为修改区域
+            targetArea.innerHTML = editHtml; // 将显示区域替换为修改区域
             document.getElementById("inline-cancel").onclick = cancelHandler;
             document.getElementById("inline-save").onclick = saveHandler;
             // 隐藏主弹窗的“关闭”按钮，避免用户在修改时关闭弹窗导致状态混乱
@@ -1499,7 +1565,7 @@
           const authorized = await requestAdminPassword("修改确认", "此修改将被永久记录在案。请输入管理密码以继续。");
 
           if (!authorized) {
-             showAlert("错误", "管理密码不正确，修改未保存。",  () => {
+            showAlert("错误", "管理密码不正确，修改未保存。", () => {
               showGiftDetailsModal(giftIndex);
             });
             return;
@@ -1515,13 +1581,14 @@
             amount: currentData.amount,
             type: currentData.type,
             remarks: currentData.remarks,
-            timestamp: currentData.timestamp, // 记录这个快照当时的时间
+            timestamp: currentData.timestamp,
           };
 
           const historyEntry = {
             timestamp: now, // 修改发生的时刻
             changeLog: changeLogText,
             snapshot: snapshot,
+            type: "correction",
           };
 
           // 3. 准备新数据
@@ -1757,19 +1824,53 @@
          * 将当前礼金数据导出为 Excel 文件。
          */
         function exportToExcel() {
+          // 1. 定义一个辅助函数，用于将 history 数组格式化为字符串
+          const formatHistoryToString = (historyArray) => {
+            if (!historyArray || historyArray.length === 0) {
+              return "无修改记录"; // 如果没有历史记录，则返回明确的文本
+            }
+
+            // 使用 map 遍历历史记录，并按照时间倒序排列
+            return [...historyArray] // 创建一个副本以避免修改原始数据
+              .reverse() // 将最新的修改放在最前面
+              .map((record, index) => {
+                const recordTime = new Date(record.timestamp).toLocaleString("zh-CN");
+                // 格式为：[序号] 时间: 修改内容;
+                return `[${index + 1}] ${recordTime}: ${record.changeLog}`;
+              })
+              .join("\n"); // 使用换行符分隔每一条记录，在Excel单元格内会自动换行
+          };
+
+          // 2. 在 map 中增加 "修改日志" 这一列
           const dataToExport = gifts.map((g) => ({
             姓名: g.data.name,
             金额: g.data.amount,
             收款类型: g.data.type,
             备注: g.data.remarks,
-            录入时间: new Date(g.data.timestamp).toLocaleString("zh-CN"),
+            最新更新时间: new Date(g.data.timestamp).toLocaleString("zh-CN"), // 将"录入时间"改为"最新更新时间"更准确
+            修改日志: formatHistoryToString(g.data.history), // <-- 新增的列
           }));
+
+          // 3. 创建工作簿和工作表 (这部分不变)
           const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+
+          // 4. (可选但强烈推荐) 调整列宽以获得更好的可读性
+          const columnWidths = [
+            { wch: 15 }, // 姓名
+            { wch: 12 }, // 金额
+            { wch: 12 }, // 收款类型
+            { wch: 30 }, // 备注
+            { wch: 22 }, // 最新更新时间
+            { wch: 60 }, // 修改日志 (设置一个较宽的宽度)
+          ];
+          worksheet["!cols"] = columnWidths;
+
           const workbook = XLSX.utils.book_new();
-          XLSX.utils.book_append_sheet(workbook, worksheet, "礼金明细");
+          XLSX.utils.book_append_sheet(workbook, worksheet, "礼金明细"); 
+
+          // 5. 导出文件 (文件名也可以更具体)
           XLSX.writeFile(workbook, `${currentEvent.name}_礼金明细.xlsx`);
         }
-
         /**
          * 计算统计数据。
          * @returns {{totalAmount: number, totalGivers: number, byType: object}}
@@ -1849,6 +1950,7 @@
           }
           const results = gifts.map((g, index) => ({ ...g, originalIndex: index })).filter((g) => g.data?.name.includes(searchTerm));
 
+          dom.searchNameInput.blur();
           if (results.length === 0) {
             return showAlert("查找结果", `没有找到姓名为 “${searchTerm}” 的记录。`);
           }
@@ -1867,6 +1969,7 @@
             )
             .join("");
           showModal(`“${searchTerm}” 的搜索结果`, `<div class="max-h-80 overflow-y-auto">${resultsHtml}</div>`, [{ text: "关闭", class: "themed-button-secondary border px-4 py-2 rounded" }]);
+        
         }
 
         /**
@@ -2001,6 +2104,74 @@
               removeBtn.textContent = "礼簿封面图已删除";
               removeBtn.disabled = true;
             };
+          }
+        }
+
+        /**
+         * 核心：执行带留痕的备注更新操作
+         * 1. 检查是否在事项有效期内，如果超出则需要密码
+         * 2. 创建备注修改快照
+         * 3. 更新数据 -> 4. 保存DB -> 5. 刷新UI
+         */
+
+        async function performRemarkUpdate(giftIndex, newRemarks, changeLogText) {
+          // 1. 检查是否超出事项时间范围
+          const isOutOfTime = new Date() < new Date(currentEvent.startDateTime) || new Date() > new Date(currentEvent.endDateTime);
+          if (isOutOfTime) {
+            const authorized = await requestAdminPassword("备注补录", "当前已超出有效录入时间，请输入管理密码以修改备注。");
+            if (!authorized) {
+              showAlert("错误", "管理密码不正确，修改未保存。", () => {
+                showGiftDetailsModal(giftIndex);
+              });
+              return;
+            }
+          }
+
+          const giftObject = gifts[giftIndex];
+          const currentData = { ...giftObject.data };
+          const now = new Date().toISOString();
+
+          // 2. 创建历史记录条目 (与步骤1类似，但类型不同)
+          const snapshot = {
+            name: currentData.name,
+            amount: currentData.amount,
+            type: currentData.type,
+            remarks: currentData.remarks,
+            timestamp: currentData.timestamp,
+          };
+
+          const historyEntry = {
+            timestamp: now,
+            changeLog: changeLogText,
+            snapshot: snapshot,
+            type: "remark", // <-- 类型标记为 'remark'
+          };
+
+          // 3. 准备新数据
+          const updatedData = {
+            ...currentData,
+            remarks: newRemarks, // 只更新备注
+            timestamp: now, // 更新主记录时间
+            history: currentData.history ? [...currentData.history, historyEntry] : [historyEntry],
+          };
+
+          // 4. 加密并保存到数据库
+          try {
+            const encryptedData = encryptData(updatedData, currentPassword);
+            const recordToUpdate = { ...giftObject, encryptedData };
+            await promisifyRequest(db.transaction("gifts", "readwrite").objectStore("gifts").put(recordToUpdate));
+
+            // 5. 更新内存和 UI
+            gifts[giftIndex].data = updatedData;
+            render(); // 刷新主界面（更新“*已备注”标记）
+            closeModal();
+
+            setTimeout(() => {
+              showGiftDetailsModal(giftIndex);
+            }, 300);
+          } catch (error) {
+            console.error("保存备注失败", error);
+            showAlert("系统错误", "保存备注时失败。");
           }
         }
 
@@ -2320,9 +2491,9 @@
           });
 
           dom.modalContent.onclick = (e) => {
-           const container = e.target.closest("[data-gift-index]");
-          if (!container) return;
-          const giftIndex = parseInt(container.dataset.giftIndex, 10);     
+            const container = e.target.closest("[data-gift-index]");
+            if (!container) return;
+            const giftIndex = parseInt(container.dataset.giftIndex, 10);
             if (e.target.id === "btn-correct-name") enableInlineEdit(giftIndex, "name");
             if (e.target.id === "btn-modify-amount") enableInlineEdit(giftIndex, "amount");
             if (e.target.id === "btn-edit-remarks") enableInlineEdit(giftIndex, "remarks");
