@@ -615,6 +615,7 @@
         // --- 常量定义 ---
         const ITEMS_PER_PAGE = 12; // 礼簿每页显示的条目数
         const MAX_COVER_IMAGE_SIZE = 2 * 1024 * 1024; // 礼簿封面图最大体积 (2MB)
+        const PRINT_SPLIT_THRESHOLD = 1008; //pdf导出打印数量
 
         // --- DOM 元素引用 ---
         const dom = {
@@ -888,7 +889,7 @@
         /**
          * 从数据库加载当前事项的所有礼金记录。
          */
-       /**
+        /**
          * 从数据库加载当前事项的所有礼金记录。
          * 优化：使用虚拟滚动思想，首次只解密当前页需要的数据
          */
@@ -896,10 +897,10 @@
           if (!db || !currentEvent) return;
           try {
             // 显示加载提示 (保持不变)
-            const loadingMsg = document.createElement('div');
-            loadingMsg.id = 'loading-indicator';
-            loadingMsg.className = 'fixed top-4 right-4 bg-blue-500 text-white px-4 py-2 rounded shadow-lg z-50';
-            loadingMsg.textContent = '正在加载数据...';
+            const loadingMsg = document.createElement("div");
+            loadingMsg.id = "loading-indicator";
+            loadingMsg.className = "fixed top-4 right-4 bg-blue-500 text-white px-4 py-2 rounded shadow-lg z-50";
+            loadingMsg.textContent = "正在加载数据...";
             document.body.appendChild(loadingMsg);
 
             const transaction = db.transaction("gifts", "readonly");
@@ -907,7 +908,7 @@
             const encryptedGifts = await promisifyRequest(index.getAll(currentEvent.id));
 
             // 先只存储加密数据，不立即解密 (保持不变)
-            gifts = encryptedGifts.map(g => ({ ...g, data: null, _needsDecrypt: true }));
+            gifts = encryptedGifts.map((g) => ({ ...g, data: null, _needsDecrypt: true }));
 
             // --- 核心修改 START ---
 
@@ -932,7 +933,7 @@
             render(); // 渲染最后一页
 
             // 移除加载提示
-            document.getElementById('loading-indicator')?.remove();
+            document.getElementById("loading-indicator")?.remove();
 
             // 后台异步解密剩余数据
             if (gifts.length > 0) {
@@ -941,7 +942,7 @@
             }
           } catch (error) {
             console.error("加载礼金列表失败:", error);
-            document.getElementById('loading-indicator')?.remove();
+            document.getElementById("loading-indicator")?.remove();
           }
         }
 
@@ -949,7 +950,7 @@
          * 后台异步解密剩余数据
          */
         async function decryptRemainingGifts(startIndex) {
-          const BATCH_SIZE = 50;
+          const BATCH_SIZE = 200;
           for (let i = startIndex; i < gifts.length; i += BATCH_SIZE) {
             const batchEnd = Math.min(i + BATCH_SIZE, gifts.length);
             for (let j = i; j < batchEnd; j++) {
@@ -959,7 +960,8 @@
               }
             }
             // 让出控制权，避免阻塞UI
-            await new Promise(resolve => setTimeout(resolve, 0));
+            await new Promise((resolve) => requestIdleCallback(resolve));
+            updateTotals();
           }
         }
 
@@ -969,7 +971,7 @@
         function ensureCurrentPageDecrypted() {
           const start = (currentPage - 1) * ITEMS_PER_PAGE;
           const end = Math.min(start + ITEMS_PER_PAGE, gifts.length);
-          
+
           for (let i = start; i < end; i++) {
             if (gifts[i]._needsDecrypt) {
               gifts[i].data = decryptData(gifts[i].encryptedData, currentPassword);
@@ -1008,17 +1010,15 @@
         async function saveGift(giftData) {
           const isOutOfTime = new Date() < new Date(currentEvent.startDateTime) || new Date() > new Date(currentEvent.endDateTime);
 
-          // 如果超出事项时间范围，需要输入管理密码才能补录
           if (isOutOfTime) {
-            const authorized = await requestAdminPassword("礼金补录", "当前已超出有效录入时间，请输入管理密码进行补录。");
-             // 用户取消则直接退出，不提示错误
+            const authorized = await requestAdminPassword("礼金补录", "当前已超出有效录入时间,请输入管理密码进行补录。");
             if (authorized === null) {
               closeModal();
               return;
             }
             if (!authorized) {
               closeModal();
-              return showAlert("密码错误", "管理密码不正确，无法录入。");
+              return showAlert("密码错误", "管理密码不正确,无法录入。");
             }
           }
 
@@ -1026,14 +1026,25 @@
             const fullGiftData = { ...giftData, timestamp: new Date().toISOString() };
             const encryptedData = encryptData(fullGiftData, currentPassword);
             const newGiftRecord = { eventId: currentEvent.id, encryptedData };
-            await promisifyRequest(db.transaction("gifts", "readwrite").objectStore("gifts").add(newGiftRecord));
+            const newId = await promisifyRequest(db.transaction("gifts", "readwrite").objectStore("gifts").add(newGiftRecord));
 
             closeModal();
             dom.addGiftForm.reset();
             document.querySelector('input[name="payment-type"][value="现金"]').checked = true;
             dom.guestNameInput.focus();
-            speakGift(giftData.name, giftData.amount); // 语音播报
-            await loadGiftsForCurrentEvent();
+            speakGift(giftData.name, giftData.amount);
+
+            const newGiftObj = {
+              id: newId,
+              eventId: currentEvent.id,
+              encryptedData: encryptedData,
+              data: fullGiftData,
+              _needsDecrypt: false,
+            };
+            gifts.push(newGiftObj);
+
+            currentPage = Math.ceil(gifts.length / ITEMS_PER_PAGE) || 1;
+            render();
           } catch (error) {
             closeModal();
             showAlert("错误", "录入礼金失败。");
@@ -1244,7 +1255,8 @@
          */
         function showGiftConfirmationModal(name, amount, remarks, nameExists, exactMatchExists) {
           let modalTitle, modalContent;
-
+          dom.giftAmountInput.blur();
+          dom.remarksInput.blur();
           if (exactMatchExists) {
             modalTitle = "重复信息确认";
             modalContent = `
@@ -1261,7 +1273,7 @@
           </div>
         </div>`;
           } else if (nameExists) {
-            modalTitle = "同名提醒与信息确认";
+            modalTitle = "同名信息确认";
             modalContent = `
         <div class="space-y-3 text-left">
           <div class="p-2 bg-yellow-100 text-yellow-800 rounded-md text-sm">
@@ -1312,35 +1324,29 @@
             <div class="space-y-4 text-left h-full flex flex-col" id="current-details-container" data-gift-index="${giftIndex}">
                 <h4 class="font-bold text-lg border-b pb-2 mb-2">当前记录信息</h4>
                 
-                <!-- START: 修改姓名区域 -->
                 <div id="name-display-area" class="flex justify-between items-center p-2 hover:bg-gray-50 rounded">
                     <div><strong>姓名:</strong> <span class="text-lg ml-2">${g.name}</span></div>
                     <button id="btn-correct-name" class="text-sm text-blue-600 hover:underline px-2 py-1">纠错</button>
                 </div>
-                <!-- END: 修改姓名区域 -->
 
-                <!-- START: 修改金额区域 -->
                 <div id="amount-display-area" class="flex justify-between items-center p-2 hover:bg-gray-50 rounded">
                     <div>
                         <p><strong>金额:</strong> <span class="font-bold themed-text text-lg ml-2">${formatCurrency(g.amount)}</span></p>
                         <p class="text-sm text-gray-500 mt-1"><strong>类型:</strong> ${g.type}</p>
                     </div>
-、                    <button id="btn-modify-amount" class="text-sm text-blue-600 hover:underline px-2 py-1">修改</button>
+                    <button id="btn-modify-amount" class="text-sm text-blue-600 hover:underline px-2 py-1">修改</button>
                 </div>
-                <!-- END: 修改金额区域 -->
                 
-                <!-- START: 修改备注区域 -->
                 <div id="remarks-display-area" class="p-2 hover:bg-gray-50 rounded">
                     <div class="flex justify-between items-start">
                         <strong>备注:</strong>
-、                        <button id="btn-edit-remarks" class="text-sm text-blue-600 hover:underline px-2 py-1">修改</button>
+                        <button id="btn-edit-remarks" class="text-sm text-blue-600 hover:underline px-2 py-1">修改</button>
                     </div>
                     <p class="pl-2 mt-1 text-gray-700 bg-gray-50 p-2 rounded">${g.remarks || "（无备注）"}</p>
                 </div>
-                <!-- END: 修改备注区域 -->
                 
                 <div class="mt-auto pt-4 text-xs text-gray-400 border-t">
-                    最新录入/修改时间: ${new Date(g.timestamp).toLocaleString("zh-CN")}
+                    录入/修改时间: ${new Date(g.timestamp).toLocaleString("zh-CN")}
                 </div>
             </div>`;
 
@@ -1460,7 +1466,7 @@
           const g = gifts[giftIndex].data;
           let targetAreaId, editHtml, saveHandler;
 
-          // --- 修复1: 禁用其他修改按钮，防止并发修改 ---
+          // 禁用其他修改按钮，防止并发修改
           const allButtons = ["btn-correct-name", "btn-modify-amount", "btn-edit-remarks"];
           allButtons.forEach((btnId) => {
             const btn = document.getElementById(btnId);
@@ -1473,7 +1479,6 @@
           // 通用的取消操作：重新渲染详情弹窗，所有状态都会恢复
           const cancelHandler = () => showGiftDetailsModal(giftIndex);
 
-          // --- 修复2: 使用主题化的按钮样式 ---
           const cancelBtnHtml = `<button id="inline-cancel" class="text-sm px-3 py-1 rounded themed-button-secondary border">取消</button>`;
           const saveBtnHtml = `<button id="inline-save" class="text-sm px-3 py-1 rounded themed-button-primary">验证并保存</button>`;
 
@@ -1481,36 +1486,36 @@
           if (fieldType === "name") {
             targetAreaId = "name-display-area";
             editHtml = `
-                    <div class="themed-edit-area">
-                        <label>纠错姓名</label>
-                        <input type="text" id="inline-edit-name" value="${g.name}" class="w-full p-2 border rounded themed-ring mb-2">
-                        <div class="flex justify-end space-x-2">${cancelBtnHtml}${saveBtnHtml}</div>
-                    </div>`;
+            <div class="themed-edit-area">
+                <label>纠错姓名</label>
+                <input type="text" id="inline-edit-name" value="${g.name}" class="w-full p-2 border rounded themed-ring mb-2">
+                <div class="flex justify-end space-x-2">${cancelBtnHtml}${saveBtnHtml}</div>
+            </div>`;
             saveHandler = async () => {
               const newName = document.getElementById("inline-edit-name").value.trim();
               if (!newName || newName === g.name) return cancelHandler(); // 无变化或为空则取消
               const changeLog = `将姓名由 “${g.name}” 更正为 “${newName}”`;
-              await performUpdateWithHistory(giftIndex, { name: newName }, changeLog);
+
+              // <-- MODIFIED CALL: 调用新的 performUpdate 函数 -->
+              await performUpdate(giftIndex, { name: newName }, changeLog, "correction");
             };
           } else if (fieldType === "amount") {
             targetAreaId = "amount-display-area";
             editHtml = `
-                    <div class="themed-edit-area">
-                        <label>修改金额与类型</label>
-                        <input type="number" id="inline-edit-amount" value="${g.amount}" min="0" step="0.01" class="w-full p-2 border rounded themed-ring mb-2">
-                        <div class="flex flex-wrap gap-x-3 gap-y-1 mb-2">
-                            ${["现金", "支付宝", "微信", "其他"]
-                              .map(
-                                (type) => `
-                                <label class="flex items-center text-sm font-normal"><input type="radio" name="inline-edit-type" value="${type}" ${
-                                  g.type === type ? "checked" : ""
-                                } class="mr-1 themed-ring">${type}</label>
-                            `
-                              )
-                              .join("")}
-                        </div>
-                        <div class="flex justify-end space-x-2">${cancelBtnHtml}${saveBtnHtml}</div>
-                    </div>`;
+            <div class="themed-edit-area">
+                <label>修改金额与类型</label>
+                <input type="number" id="inline-edit-amount" value="${g.amount}" min="0" step="0.01" class="w-full p-2 border rounded themed-ring mb-2">
+                <div class="flex flex-wrap gap-x-3 gap-y-1 mb-2">
+                    ${["现金", "支付宝", "微信", "其他"]
+                      .map(
+                        (type) => `
+                        <label class="flex items-center text-sm font-normal"><input type="radio" name="inline-edit-type" value="${type}" ${g.type === type ? "checked" : ""} class="mr-1 themed-ring">${type}</label>
+                    `
+                      )
+                      .join("")}
+                </div>
+                <div class="flex justify-end space-x-2">${cancelBtnHtml}${saveBtnHtml}</div>
+            </div>`;
             saveHandler = async () => {
               const newAmount = parseFloat(document.getElementById("inline-edit-amount").value);
               const newType = document.querySelector('input[name="inline-edit-type"]:checked').value;
@@ -1519,19 +1524,20 @@
               if (newAmount === g.amount && newType === g.type) return cancelHandler(); // 无变化则取消
 
               let logs = [];
-              if (newAmount !== g.amount) logs.push(`金额由 ${g.amount} 修改为 ${newAmount}`);
-              if (newType !== g.type) logs.push(`类型由 ${g.type} 修改为 ${newType}`);
+              if (newAmount !== g.amount) logs.push(`将金额由 ${g.amount} 修改为 ${newAmount}`);
+              if (newType !== g.type) logs.push(`将类型由 ${g.type} 修改为 ${newType}`);
 
-              await performUpdateWithHistory(giftIndex, { amount: newAmount, type: newType }, logs.join("，"));
+              // <-- MODIFIED CALL: 调用新的 performUpdate 函数 -->
+              await performUpdate(giftIndex, { amount: newAmount, type: newType }, logs.join("，"), "correction");
             };
           } else if (fieldType === "remarks") {
             targetAreaId = "remarks-display-area";
             editHtml = `
-                    <div class="themed-edit-area">
-                        <label>修改备注</label>
-                        <textarea id="inline-edit-remarks" class="w-full p-2 border rounded themed-ring mb-2" rows="3">${g.remarks || ""}</textarea>
-                        <div class="flex justify-end space-x-2">${cancelBtnHtml}${saveBtnHtml}</div>
-                    </div>`;
+            <div class="themed-edit-area">
+                <label>修改备注</label>
+                <textarea id="inline-edit-remarks" class="w-full p-2 border rounded themed-ring mb-2" rows="3">${g.remarks || ""}</textarea>
+                <div class="flex justify-end space-x-2">${cancelBtnHtml}${saveBtnHtml}</div>
+            </div>`;
             saveHandler = async () => {
               const newRemarks = document.getElementById("inline-edit-remarks").value.trim();
               if (newRemarks === (g.remarks || "")) return cancelHandler();
@@ -1540,8 +1546,8 @@
               const newRemarksText = newRemarks || "（空）";
               const changeLog = `将备注由 “${oldRemarksText}” 修改为 “${newRemarksText}”`;
 
-              // <-- 关键修改：调用新的、专门的备注更新函数
-              await performRemarkUpdate(giftIndex, newRemarks, changeLog);
+              // <-- MODIFIED CALL: 调用新的 performUpdate 函数 -->
+              await performUpdate(giftIndex, { remarks: newRemarks }, changeLog, "remark");
             };
           }
 
@@ -1556,126 +1562,21 @@
           }
         }
 
-        /**
-         * 核心：执行带留痕的更新操作
-         * 1. 验证密码 -> 2. 创建快照 -> 3. 更新数据 -> 4. 保存DB -> 5. 刷新UI
-         */
-        async function performUpdateWithHistory(giftIndex, newFields, changeLogText) {
-          // 1. 密码验证
-          const authorized = await requestAdminPassword("修改确认", "此修改将被永久记录在案。请输入管理密码以继续。");
-
-          if (!authorized) {
-            showAlert("错误", "管理密码不正确，修改未保存。", () => {
-              showGiftDetailsModal(giftIndex);
-            });
-            return;
-          }
-
-          const giftObject = gifts[giftIndex];
-          const currentData = { ...giftObject.data }; // 浅拷贝当前数据作为快照基础
-          const now = new Date().toISOString();
-
-          // 2. 创建历史记录条目 (Snapshot 仅包含核心数据，不包含之前的 history，防止无限嵌套)
-          const snapshot = {
-            name: currentData.name,
-            amount: currentData.amount,
-            type: currentData.type,
-            remarks: currentData.remarks,
-            timestamp: currentData.timestamp,
-          };
-
-          const historyEntry = {
-            timestamp: now, // 修改发生的时刻
-            changeLog: changeLogText,
-            snapshot: snapshot,
-            type: "correction",
-          };
-
-          // 3. 准备新数据
-          const updatedData = {
-            ...currentData,
-            ...newFields, // 应用新字段
-            timestamp: now, // 更新主记录时间
-            history: currentData.history ? [...currentData.history, historyEntry] : [historyEntry], // 追加历史
-          };
-
-          // 4. 加密并保存到数据库
-          try {
-            const encryptedData = encryptData(updatedData, currentPassword);
-            const recordToUpdate = { ...giftObject, encryptedData };
-            await promisifyRequest(db.transaction("gifts", "readwrite").objectStore("gifts").put(recordToUpdate));
-
-            // 5. 更新内存和 UI
-            gifts[giftIndex].data = updatedData;
-            render(); // 刷新礼簿主界面（更新金额和“*已修改”标记）
-            closeModal();
-
-            // 短暂延迟后重新打开详情页，展示更新后的状态和时间轴
-            setTimeout(() => {
-              showGiftDetailsModal(giftIndex);
-              // 可以加一个自动消失的提示
-              // showToast("修改已保存并留痕");
-            }, 300);
-          } catch (error) {
-            console.error("保存失败", error);
-            showAlert("系统错误", "保存修改记录时失败。");
-          }
-        }
-
-        /**
-         * 在详情弹窗中，将备注显示区域替换为可修改的文本域。
-         */
-        function enableRemarkEditing(giftObject, giftIndex) {
-          const remarksContainer = document.getElementById("remarks-container");
-          remarksContainer.innerHTML = `
-      <label for="remarks-textarea" class="block font-bold">修改备注:</label>
-      <textarea id="remarks-textarea" class="w-full p-2 border rounded themed-ring mt-1" rows="3" placeholder="按 Ctrl + Enter 可快速保存">${giftObject.data.remarks || ""}</textarea>
-      <div class="mt-2 text-right">
-        <button id="save-remarks-btn" class="themed-button-primary px-3 py-1 rounded">保存</button>
-      </div>`;
-
-          const saveButton = document.getElementById("save-remarks-btn");
-          const remarksTextarea = document.getElementById("remarks-textarea");
-          remarksTextarea.focus();
-          remarksTextarea.selectionStart = remarksTextarea.value.length; // 光标移到末尾
-
-          const saveRemarks = async () => {
-            const newRemarks = remarksTextarea.value.trim();
-            const updatedGiftData = { ...giftObject.data, remarks: newRemarks };
-            const encryptedData = encryptData(updatedGiftData, currentPassword);
-            const recordToUpdate = { ...giftObject, encryptedData };
-            try {
-              await promisifyRequest(db.transaction("gifts", "readwrite").objectStore("gifts").put(recordToUpdate));
-              gifts[giftIndex].data.remarks = newRemarks; // 同步更新内存中的数据
-              render(); // 重新渲染以更新备注星号
-              closeModal();
-              showAlert("成功", "备注已成功更新。", false);
-            } catch (error) {
-              showAlert("错误", "更新备注失败。");
-            }
-          };
-
-          saveButton.onclick = saveRemarks;
-          remarksTextarea.addEventListener("keydown", (e) => {
-            if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-              e.preventDefault();
-              saveRemarks();
-            }
-          });
-        }
-
         // --- 功能模块 (打印, 导出, 统计, 搜索) ---
 
         /**
          * 生成所有用于打印的页面 HTML 内容，并触发浏览器打印功能。
+         * 如果记录超过指定条数，则会弹窗要求分批打印。
          */
-        /**
-         * 生成所有用于打印的页面 HTML 内容，并触发浏览器打印功能。
-         * 核心修复：此函数现在会等待封面图加载完成后再触发打印，以解决首次打印不显示封面的问题。
-         */
+
         function prepareForPrint() {
           if (gifts.length === 0) {
             return showAlert("无法打印", "当前事项没有任何礼金记录，无需打印。");
+          }
+
+          if (gifts.length > PRINT_SPLIT_THRESHOLD) {
+            showPrintChunkModal();
+            return;
           }
 
           let printView = document.getElementById("print-view");
@@ -1686,10 +1587,7 @@
           const eventCreationDate = new Date(currentEvent.startDateTime).toLocaleDateString("zh-CN");
           document.title = `${currentEvent.name}礼金明细-${eventCreationDate}`;
 
-          // 1. 将打印的核心逻辑封装成一个函数
-          // 这个函数将在封面加载后（或无封面时）被调用
           const executePrint = () => {
-            // 2. 生成礼金明细页 (这部分逻辑不变)
             const totalGiftPages = Math.ceil(gifts.length / ITEMS_PER_PAGE) || 1;
             for (let i = 0; i < totalGiftPages; i++) {
               const pageGifts = gifts.slice(i * ITEMS_PER_PAGE, (i + 1) * ITEMS_PER_PAGE);
@@ -1714,7 +1612,7 @@
             <p>日期: ${eventCreationDate}</p>
             <p class="print-page-number">第 ${i + 1} / ${totalGiftPages} 页</p>
             <div class="print-footer-totals">
-              <p>本页小计: ${formatCurrency(pageSubtotal)}</p>
+              <span>本页小计: ${formatCurrency(pageSubtotal)}</span>
               ${
                 isLastPage
                   ? `
@@ -1727,18 +1625,13 @@
               printView.appendChild(pageContainer);
             }
 
-            // 3. 生成附录页 (逻辑不变)
-            appendAppendixPages(printView, eventCreationDate);
+            appendAppendixPages(printView, eventCreationDate, gifts);
 
-            // 4. 将准备好的所有内容添加到页面并打印
             document.body.appendChild(printView);
             document.body.classList.add("printing");
 
-            // 使用 setTimeout 0 毫秒将打印操作推迟到下一个事件循环
-            // 这可以确保DOM元素（特别是图片）有足够的时间被浏览器“绘制”出来
             setTimeout(() => {
               window.print();
-              //打印后清理
               setTimeout(() => {
                 document.body.classList.remove("printing");
                 document.getElementById("print-view")?.remove();
@@ -1746,40 +1639,189 @@
             }, 0);
           };
 
-          // 5. 判断是否有封面图
           if (currentEvent.coverImage) {
             const coverPage = document.createElement("div");
             coverPage.className = "print-page print-cover-page";
             const coverImg = document.createElement("img");
 
-            // 关键：为图片设置 onload 事件监听器
             coverImg.onload = () => {
-              // 图片加载成功后，才执行打印逻辑
               executePrint();
             };
-            // 容错处理：如果图片加载失败，也继续执行不带封面的打印
             coverImg.onerror = () => {
               console.error("封面图加载失败，将不带封面进行打印。");
-              coverPage.remove(); // 移除损坏的封面页
+              coverPage.remove();
               executePrint();
             };
 
             printView.appendChild(coverPage);
             coverPage.appendChild(coverImg);
-
-            // 最后再设置 src 属性，以触发加载
             coverImg.src = currentEvent.coverImage;
           } else {
-            // 如果没有封面图，直接执行打印逻辑
+            executePrint();
+          }
+        }
+
+        /**
+         * 当礼金记录超过阈值时，显示一个可滚动的列表，让用户选择打印部分。
+         * 弹窗在点击打印后不会关闭，并会更新列表项的状态。
+         */
+        function showPrintChunkModal() {
+          const totalChunks = Math.ceil(gifts.length / PRINT_SPLIT_THRESHOLD);
+          let contentHtml = `<p class="mb-4 text-sm text-gray-700">由于礼金记录数较多，为防止浏览器渲染PDF卡死，系统已开启分，请选择要打印/导出的部分。</p>`;
+
+          let listHtml = '<div class="space-y-2 border rounded-lg p-2 max-h-[50vh] overflow-y-auto">';
+          for (let i = 0; i < totalChunks; i++) {
+            const startRecord = i * PRINT_SPLIT_THRESHOLD + 1;
+            const endRecord = Math.min((i + 1) * PRINT_SPLIT_THRESHOLD, gifts.length);
+
+            listHtml += `<div class="print-chunk-item flex justify-between items-center p-3 rounded-lg cursor-pointer themed-link-hover" 
+                             data-chunk-index="${i}" 
+                             data-original-text="打印第 ${i + 1} 部分 (记录 ${startRecord} - ${endRecord})">
+                           <span class="main-text">打印第 ${i + 1} 部分 (记录 ${startRecord} - ${endRecord})</span>
+                           <span class="status-icon text-green-600 font-bold"></span>
+                         </div>`;
+          }
+          listHtml += "</div>";
+          contentHtml += listHtml;
+
+          showModal("分批打印/导出PDF", contentHtml, [{ text: "关闭", class: "themed-button-secondary border px-4 py-2 rounded" }]);
+
+          document
+            .getElementById("modal-content")
+            .querySelectorAll(".print-chunk-item")
+            .forEach((item) => {
+              item.onclick = (e) => {
+                const targetItem = e.currentTarget;
+                if (targetItem.dataset.status === "completed" || targetItem.dataset.status === "printing") {
+                  return;
+                }
+                const chunkIndex = parseInt(targetItem.dataset.chunkIndex, 10);
+                if (!isNaN(chunkIndex)) {
+                  executeChunkedPrint(chunkIndex, targetItem);
+                }
+              };
+            });
+        }
+
+        /**
+         * 执行分批打印，更新列表项状态，并为每部分添加封面和对应的“本部分人数”统计。
+         * @param {number} chunkIndex - 要打印的部分的索引 (从0开始)。
+         * @param {HTMLElement} [uiElement=null] - 列表项DOM元素，用于状态反馈。
+         */
+
+        function executeChunkedPrint(chunkIndex, uiElement) {
+          // 旧的按钮检查 (tagName, disabled) 已被移除。
+          if (!uiElement || uiElement.dataset.status === "completed" || uiElement.dataset.status === "printing") {
+            return;
+          }
+
+          // 现在只处理列表项的状态。
+          uiElement.dataset.status = "printing";
+          uiElement.querySelector(".main-text").textContent = "正在准备打印...";
+          uiElement.classList.remove("themed-link-hover");
+          uiElement.classList.add("cursor-wait");
+
+          const start = chunkIndex * PRINT_SPLIT_THRESHOLD;
+          const end = Math.min(start + PRINT_SPLIT_THRESHOLD, gifts.length);
+          const chunkGifts = gifts.slice(start, end);
+          const partSubtotal = chunkGifts.reduce((sum, gift) => sum + (gift.data?.amount || 0), 0);
+
+          let printView = document.getElementById("print-view");
+          if (printView) printView.remove();
+          printView = document.createElement("div");
+          printView.id = "print-view";
+
+          const eventCreationDate = new Date(currentEvent.startDateTime).toLocaleDateString("zh-CN");
+          document.title = `${currentEvent.name}礼金明细-P${chunkIndex + 1}-${eventCreationDate}`;
+
+          const executePrint = () => {
+            const totalGiftPagesInChunk = Math.ceil(chunkGifts.length / ITEMS_PER_PAGE) || 1;
+            for (let i = 0; i < totalGiftPagesInChunk; i++) {
+              const pageGifts = chunkGifts.slice(i * ITEMS_PER_PAGE, (i + 1) * ITEMS_PER_PAGE);
+              const pageContainer = document.createElement("div");
+              pageContainer.className = "print-page";
+              const content = document.createElement("div");
+              content.className = "print-book-content";
+              if (i === 0) {
+                pageContainer.innerHTML += `<h1 class="print-header">${currentEvent.name}礼金明细 (P${chunkIndex + 1})</h1>`;
+              }
+              renderGiftBook(content, pageGifts);
+              pageContainer.appendChild(content);
+              const pageSubtotal = pageGifts.reduce((sum, gift) => sum + (gift.data?.amount || 0), 0);
+              const stats = calculateStats();
+              const isLastPageOfChunk = i === totalGiftPagesInChunk - 1;
+
+              pageContainer.innerHTML += `
+              <div class="print-footer">
+                <p>日期: ${eventCreationDate}</p>
+                <p class="print-page-number">第 ${i + 1} / ${totalGiftPagesInChunk} 页</p>
+                <div class="print-footer-totals">
+                  <span>本页小计: ${formatCurrency(pageSubtotal)}</span>
+                  ${
+                    isLastPageOfChunk
+                      ? `
+                    <div>
+                      <span class="total-amount-print">本部分记录人数: ${chunkGifts.length}</span>
+                      <span class="total-amount-print">本部分小计: ${formatCurrency(partSubtotal)}</span>
+                    </div>
+                    <span class="total-amount-print ml-3">送礼总人数: ${stats.totalGivers}</span>
+                    <span class="ml-3 total-amount-print">礼金总金额: ${formatCurrency(stats.totalAmount)}</span>`
+                      : ""
+                  }
+                </div>
+              </div>`;
+              printView.appendChild(pageContainer);
+            }
+
+            appendAppendixPages(printView, eventCreationDate, chunkGifts);
+            document.body.appendChild(printView);
+            document.body.classList.add("printing");
+
+            setTimeout(() => {
+              window.print();
+              setTimeout(() => {
+                document.body.classList.remove("printing");
+                document.getElementById("print-view")?.remove();
+
+                uiElement.dataset.status = "completed";
+                const mainTextSpan = uiElement.querySelector(".main-text");
+                const originalText = uiElement.dataset.originalText || "";
+                mainTextSpan.textContent = `${originalText} (已完成)`;
+                uiElement.querySelector(".status-icon").innerHTML = "&#10004;"; // Checkmark symbol
+                uiElement.classList.remove("cursor-wait");
+                uiElement.classList.add("cursor-default", "opacity-70");
+              }, 100);
+            }, 0);
+          };
+
+          if (currentEvent.coverImage) {
+            const coverPage = document.createElement("div");
+            coverPage.className = "print-page print-cover-page";
+            const coverImg = document.createElement("img");
+            coverImg.onload = executePrint;
+            coverImg.onerror = () => {
+              console.error("封面图加载失败，将不带封面进行打印。");
+              coverPage.remove();
+              executePrint();
+            };
+            printView.appendChild(coverPage);
+            coverPage.appendChild(coverImg);
+            coverImg.src = currentEvent.coverImage;
+          } else {
             executePrint();
           }
         }
 
         /**
          * 生成并附加备注附录页面到打印视图。
+         * @param {HTMLElement} printView - 打印视图的容器元素。
+         * @param {string} dateString - 日期字符串。
+         * @param {Array} giftSourceArray - 用于生成附录的礼金记录数组（可以是全部或一个部分）。
          */
-        function appendAppendixPages(printView, dateString) {
-          const remarkedItems = gifts.map((gift, index) => ({ ...gift, originalIndex: index })).filter((g) => g.data && g.data.remarks);
+        function appendAppendixPages(printView, dateString, giftSourceArray) {
+          const remarkedItems = giftSourceArray
+            .map((gift, index) => ({ ...gift, chunkIndex: index })) // 使用相对于传入数组的索引
+            .filter((g) => g.data && g.data.remarks);
 
           if (remarkedItems.length === 0) return;
 
@@ -1796,7 +1838,7 @@
                 (item) => `
               <tr>
                 <td>${item.data.name}</td>
-                <td>第${Math.floor(item.originalIndex / ITEMS_PER_PAGE) + 1}页第${(item.originalIndex % ITEMS_PER_PAGE) + 1}位</td>
+                <td>第 ${Math.floor(item.chunkIndex / ITEMS_PER_PAGE) + 1} 页第 ${(item.chunkIndex % ITEMS_PER_PAGE) + 1} 位</td>
                 <td>${item.data.remark || item.data.remarks}</td>
               </tr>
           `
@@ -1807,7 +1849,7 @@
               <h1 class="print-header">附录：宾客备注</h1>
               <table class="print-appendix-table">
                   <thead>
-                      <tr><th>姓名</th><th>记录索引</th><th>备注信息</th></tr>
+                      <tr><th>姓名</th><th>本部分记录索引</th><th>备注信息</th></tr>
                   </thead>
                   <tbody>${tableRows}</tbody>
               </table>
@@ -1866,7 +1908,7 @@
           worksheet["!cols"] = columnWidths;
 
           const workbook = XLSX.utils.book_new();
-          XLSX.utils.book_append_sheet(workbook, worksheet, "礼金明细"); 
+          XLSX.utils.book_append_sheet(workbook, worksheet, "礼金明细");
 
           // 5. 导出文件 (文件名也可以更具体)
           XLSX.writeFile(workbook, `${currentEvent.name}_礼金明细.xlsx`);
@@ -1969,7 +2011,6 @@
             )
             .join("");
           showModal(`“${searchTerm}” 的搜索结果`, `<div class="max-h-80 overflow-y-auto">${resultsHtml}</div>`, [{ text: "关闭", class: "themed-button-secondary border px-4 py-2 rounded" }]);
-        
         }
 
         /**
@@ -1979,7 +2020,6 @@
           let coverImageForUpdate = currentEvent.coverImage;
           let shouldRemoveCover = false;
 
-          // --- 修改：在HTML中增加了“语音播报起报金额”的设置项 ---
           const content = `
     <div class="space-y-4 text-left">
         <div>
@@ -2108,30 +2148,41 @@
         }
 
         /**
-         * 核心：执行带留痕的备注更新操作
-         * 1. 检查是否在事项有效期内，如果超出则需要密码
-         * 2. 创建备注修改快照
-         * 3. 更新数据 -> 4. 保存DB -> 5. 刷新UI
+         * 核心：执行带留痕的更新操作 (合并版本)
+         * 1. 根据更新类型验证权限 -> 2. 创建快照 -> 3. 更新数据 -> 4. 保存DB -> 5. 刷新UI
+         * @param {number} giftIndex - 礼金记录在 gifts 数组中的索引
+         * @param {object} newFields - 一个包含要更新字段的对象，例如 { name: "新名字" } 或 { remarks: "新备注" }
+         * @param {string} changeLogText - 用于写入历史记录的变更描述文本
+         * @param {'correction' | 'remark'} updateType - 更新的类型，'correction' (纠错) 需要强制密码，'remark' (备注) 仅在超时后需要密码
          */
-
-        async function performRemarkUpdate(giftIndex, newRemarks, changeLogText) {
-          // 1. 检查是否超出事项时间范围
-          const isOutOfTime = new Date() < new Date(currentEvent.startDateTime) || new Date() > new Date(currentEvent.endDateTime);
-          if (isOutOfTime) {
-            const authorized = await requestAdminPassword("备注补录", "当前已超出有效录入时间，请输入管理密码以修改备注。");
-            if (!authorized) {
-              showAlert("错误", "管理密码不正确，修改未保存。", () => {
-                showGiftDetailsModal(giftIndex);
-              });
-              return;
+        async function performUpdate(giftIndex, newFields, changeLogText, updateType) {
+          // 1. 根据更新类型验证权限
+          let authorized = false;
+          if (updateType === "correction") {
+            // 对于姓名、金额等关键信息修改，总是要求输入密码
+            authorized = await requestAdminPassword("修改确认", "此修改将被永久记录在案。请输入管理密码以继续。");
+          } else if (updateType === "remark") {
+            // 对于备注修改，只在超出事项时间范围时要求密码
+            const isOutOfTime = new Date() < new Date(currentEvent.startDateTime) || new Date() > new Date(currentEvent.endDateTime);
+            if (isOutOfTime) {
+              authorized = await requestAdminPassword("备注补录", "当前已超出有效录入时间，请输入管理密码以修改备注。");
+            } else {
+              authorized = true; // 在有效时间内修改备注，无需密码
             }
           }
 
+          if (!authorized) {
+            showAlert("错误", "管理密码不正确或操作已取消，修改未保存。", () => {
+              showGiftDetailsModal(giftIndex);
+            });
+            return;
+          }
+
           const giftObject = gifts[giftIndex];
-          const currentData = { ...giftObject.data };
+          const currentData = { ...giftObject.data }; // 浅拷贝当前数据作为快照基础
           const now = new Date().toISOString();
 
-          // 2. 创建历史记录条目 (与步骤1类似，但类型不同)
+          // 2. 创建历史记录条目 (Snapshot 仅包含核心数据，不包含之前的 history，防止无限嵌套)
           const snapshot = {
             name: currentData.name,
             amount: currentData.amount,
@@ -2141,18 +2192,18 @@
           };
 
           const historyEntry = {
-            timestamp: now,
+            timestamp: now, // 修改发生的时刻
             changeLog: changeLogText,
             snapshot: snapshot,
-            type: "remark", // <-- 类型标记为 'remark'
+            type: updateType, // 使用传入的类型
           };
 
           // 3. 准备新数据
           const updatedData = {
             ...currentData,
-            remarks: newRemarks, // 只更新备注
+            ...newFields, // 应用新字段
             timestamp: now, // 更新主记录时间
-            history: currentData.history ? [...currentData.history, historyEntry] : [historyEntry],
+            history: currentData.history ? [...currentData.history, historyEntry] : [historyEntry], // 追加历史
           };
 
           // 4. 加密并保存到数据库
@@ -2163,15 +2214,20 @@
 
             // 5. 更新内存和 UI
             gifts[giftIndex].data = updatedData;
-            render(); // 刷新主界面（更新“*已备注”标记）
+            gifts[giftIndex].encryptedData = encryptedData;
+            render(); // 刷新礼簿主界面（更新金额和“*已修改”标记）
             closeModal();
 
+            // 短暂延迟后重新打开详情页，展示更新后的状态和时间轴
             setTimeout(() => {
               showGiftDetailsModal(giftIndex);
             }, 300);
           } catch (error) {
-            console.error("保存备注失败", error);
-            showAlert("系统错误", "保存备注时失败。");
+            console.error("保存失败", error);
+            // 关键修复：当保存失败时，弹窗并强制重新渲染详情，确保UI与数据库一致
+            showAlert("系统错误", "保存修改记录时失败。您的修改未生效。", () => {
+              showGiftDetailsModal(giftIndex);
+            });
           }
         }
 
@@ -2239,7 +2295,6 @@
           const utterance = new SpeechSynthesisUtterance(textToSpeak);
           utterance.lang = "zh-CN";
 
-          // --- 新增：查找并设置指定的音色 ---
           if (currentEvent.voiceName) {
             const voices = speechSynthesis.getVoices();
             const selectedVoice = voices.find((voice) => voice.name === currentEvent.voiceName);
@@ -2420,6 +2475,7 @@
           dom.prevPageBtn.addEventListener("click", () => {
             if (currentPage > 1) {
               currentPage--;
+              ensureCurrentPageDecrypted(); // 👈 添加这行
               render();
             }
           });
@@ -2427,6 +2483,7 @@
             const totalPages = Math.ceil(gifts.length / ITEMS_PER_PAGE) || 1;
             if (currentPage < totalPages) {
               currentPage++;
+              ensureCurrentPageDecrypted(); // 👈 添加这行
               render();
             }
           });
