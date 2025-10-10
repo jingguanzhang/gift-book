@@ -8,6 +8,7 @@
     <script src="./static/xlsx.full.min.js"></script>
     <script src="./static/crypto-js.min.js"></script>
     <link href="./static/mermaid.min.css" rel="stylesheet" />
+    <link href="./static/remixicon.css" rel="stylesheet" />
     <script src="./static/gridjs.umd.js"></script>
     <link rel="preload" href="./static/bg.webp" as="image" type="image/webp" />
     <style>
@@ -480,9 +481,7 @@
               <summary class="cursor-pointer text-sm font-medium text-gray-600 group-hover:text-gray-900 list-none">
                 <div class="flex items-center">
                   <span>更多设置</span>
-                  <svg class="w-4 h-4 ml-1 transition-transform transform group-open:rotate-180" fill="currentColor" viewBox="0 0 20 20">
-                    <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"></path>
-                  </svg>
+                  <i class="ri-arrow-down-s-line text-lg ml-1 transition-transform transform group-open:rotate-180"></i>
                 </div>
               </summary>
               <div class="mt-4 p-4 bg-gray-50 rounded-lg border">
@@ -527,14 +526,14 @@
       <!-- 礼簿主界面 -->
       <div id="main-screen" class="hidden">
         <div class="flex justify-between items-center mb-4">
-          <div class="relative">
-            <div id="event-switcher-trigger" class="flex items-center gap-2 cursor-pointer group">
-              <h1 id="current-event-title" class="text-3xl font-bold themed-dropdown-text"></h1>
-              <svg class="w-6 h-6 themed-dropdown-text" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
-                <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"></path>
-              </svg>
+          <div class="flex items-center gap-4">
+            <div class="relative">
+              <div id="event-switcher-trigger" class="flex items-center gap-2 cursor-pointer group">
+                <h1 id="current-event-title" class="text-3xl font-bold themed-dropdown-text"></h1>
+                <i class="ri-arrow-down-s-line text-2xl themed-dropdown-text"></i>
+              </div>
+              <div id="event-dropdown" class="absolute top-full left-0 mt-2 w-72 bg-white rounded-md shadow-lg z-10 hidden"></div>
             </div>
-            <div id="event-dropdown" class="absolute top-full left-0 mt-2 w-72 bg-white rounded-md shadow-lg z-10 hidden"></div>
           </div>
         </div>
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -561,9 +560,7 @@
               <div class="space-y-3">
                 <div class="relative">
                   <input type="text" id="search-name" placeholder="按姓名查找..." class="w-full p-3 border rounded-lg focus:ring-2 themed-ring pr-10" />
-                  <svg id="search-icon" class="w-6 h-6 absolute right-3 top-3 text-gray-400 cursor-pointer" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
-                  </svg>
+                  <i id="search-icon" class="ri-search-line text-xl absolute right-3 top-3 text-gray-400 cursor-pointer"></i>
                 </div>
                 <button id="print-btn" class="w-full themed-button-primary p-3 rounded-lg">打印/另存为PDF</button>
                 <button id="export-excel-btn" class="w-full border themed-button-secondary p-3 rounded-lg">导出为 Excel</button>
@@ -589,10 +586,10 @@
                   <div><span class="font-bold text-md">总金额:</span> <span id="total-amount" class="text-xl font-bold themed-text">¥0.00</span></div>
                   <div><span class="font-bold text-md">总人数:</span> <span id="total-givers" class="text-xl font-bold themed-text">0</span></div>
                 </div>
-                <div class="flex items-center space-x-2">
-                  <button id="prev-page-btn" class="themed-button-primary p-2 disabled:bg-gray-300 rounded-full w-8 h-8 flex items-center justify-center">&lt;</button>
-                  <span id="page-info" class="font-bold text-lg">第 1 / 1 页</span>
-                  <button id="next-page-btn" class="themed-button-primary p-2 disabled:bg-gray-300 rounded-full w-8 h-8 flex items-center justify-center">&gt;</button>
+                <div class="flex items-center space-x-2 text-lg">
+                  <button id="prev-page-btn" class="themed-button-primary p-2 disabled:bg-gray-300 rounded-full w-8 h-8 flex items-center justify-center"><i class="ri-arrow-left-s-line"></i></button>
+                  <div id="page-info" class="font-bold flex items-center">第 1 / 1 页</div>
+                  <button id="next-page-btn" class="themed-button-primary p-2 disabled:bg-gray-300 rounded-full w-8 h-8 flex items-center justify-center"><i class="ri-arrow-right-s-line"></i></button>
                 </div>
               </div>
               <div id="gift-book-content"></div>
@@ -601,6 +598,9 @@
         </div>
       </div>
     </div>
+    <button id="fullscreen-btn" class="fixed top-5 right-5" title="全屏/退出全屏">
+      <i id="fullscreen-icon" class="ri-fullscreen-line text-2xl themed-text themed-dropdown-text"></i>
+    </button>
     <!-- 模态框/弹窗 -->
     <div id="modal-container" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
       <div id="modal" class="bg-white p-6 rounded-lg shadow-xl w-full max-w-md">
@@ -661,6 +661,8 @@
           coverPreview: document.getElementById("cover-preview"),
           eventVoiceSelect: document.getElementById("event-voice"),
           previewCreateVoiceBtn: document.getElementById("preview-create-voice-btn"),
+          fullscreenBtn: document.getElementById("fullscreen-btn"),
+          fullscreenIcon: document.getElementById("fullscreen-icon"),
         };
 
         // --- 应用状态管理 ---
@@ -777,6 +779,24 @@
             console.error("会话存储失败", e);
           }
 
+          const endTime = new Date(currentEvent.endDateTime);
+          const now = new Date();
+          const notificationKey = `eventEndedNotif_${currentEvent.id}`;
+
+          // 检查事项是否已结束，并且在当前浏览器会话中尚未提示过
+          if (now > endTime && !sessionStorage.getItem(notificationKey)) {
+            const title = "请及时导出数据";
+            const message = `当前事项已于结束，为确保数据安全，强烈建议您尽快通过【<strong>导出为 Excel</strong>】或【<strong>打印/另存为PDF</strong>】功能，将礼金数据完整备份至您的电脑或者微信。<br>
+                         <span class="text-sm text-gray-600">原因：时间长了，浏览器存储空间可能会因系统清理、缓存清除等操作被重置，导致数据意外丢失。</span>`;
+
+            // 使用 setTimeout 确保主界面渲染完成后再弹窗
+            setTimeout(() => {
+              showAlert(title, message);
+              // 标记已提示，本次会话不再重复弹出
+              sessionStorage.setItem(notificationKey, "true");
+            }, 500);
+          }
+
           loadGiftsForCurrentEvent();
           showMainScreen();
         }
@@ -889,20 +909,9 @@
         /**
          * 从数据库加载当前事项的所有礼金记录。
          */
-        /**
-         * 从数据库加载当前事项的所有礼金记录。
-         * 优化：使用虚拟滚动思想，首次只解密当前页需要的数据
-         */
         async function loadGiftsForCurrentEvent() {
           if (!db || !currentEvent) return;
           try {
-            // 显示加载提示 (保持不变)
-            const loadingMsg = document.createElement("div");
-            loadingMsg.id = "loading-indicator";
-            loadingMsg.className = "fixed top-4 right-4 bg-blue-500 text-white px-4 py-2 rounded shadow-lg z-50";
-            loadingMsg.textContent = "正在加载数据...";
-            document.body.appendChild(loadingMsg);
-
             const transaction = db.transaction("gifts", "readonly");
             const index = transaction.objectStore("gifts").index("eventId");
             const encryptedGifts = await promisifyRequest(index.getAll(currentEvent.id));
@@ -932,17 +941,13 @@
 
             render(); // 渲染最后一页
 
-            // 移除加载提示
-            document.getElementById("loading-indicator")?.remove();
-
             // 后台异步解密剩余数据
             if (gifts.length > 0) {
               // 从头开始解密，它会自动跳过已经解密的最后一页
               requestIdleCallback(() => decryptRemainingGifts(0));
             }
           } catch (error) {
-            console.error("加载礼金列表失败:", error);
-            document.getElementById("loading-indicator")?.remove();
+            showNotification("数据加载失败!", "error");
           }
         }
 
@@ -1045,9 +1050,10 @@
 
             currentPage = Math.ceil(gifts.length / ITEMS_PER_PAGE) || 1;
             render();
+            showNotification("录入成功!", "success");
           } catch (error) {
             closeModal();
-            showAlert("错误", "录入礼金失败。");
+            showNotification("录入失败，请重试", "error");
           }
         }
 
@@ -1162,11 +1168,40 @@
          */
         function updatePageInfo() {
           const totalPages = Math.ceil(gifts.length / ITEMS_PER_PAGE) || 1;
-          dom.pageInfoEl.textContent = `第 ${currentPage} / ${totalPages} 页`;
+          dom.pageInfoEl.innerHTML = `
+            第
+            <input type="number" id="current-page-input" value="${currentPage}"
+                  min="1" max="${totalPages}" 
+                  class="w-[${currentPage.toString().length}em] text-center bg-transparent themed-ring rounded border p-0 mx-2 font-bold focus:w-[4em]">
+            / ${totalPages} 页
+        `;
           dom.prevPageBtn.disabled = currentPage === 1;
           dom.nextPageBtn.disabled = currentPage === totalPages;
         }
 
+        /**
+         * 处理页码输入框的变化，实现页面跳转
+         * @param {Event} e - 事件对象
+         */
+        function handlePageInputChange(e) {
+          const inputElement = e.target;
+          const targetPage = parseInt(inputElement.value, 10);
+          const totalPages = Math.ceil(gifts.length / ITEMS_PER_PAGE) || 1;
+
+          // 检查输入值是否为有效页码
+          if (!isNaN(targetPage) && targetPage >= 1 && targetPage <= totalPages) {
+            // 如果页码有效且与当前页不同，则跳转
+            if (targetPage !== currentPage) {
+              currentPage = targetPage;
+              ensureCurrentPageDecrypted(); // 确保目标页数据已解密
+              render(); // 重新渲染礼簿
+            }
+          } else {
+            // 如果输入无效，显示错误提示并恢复输入框的值
+            showNotification("请输入一个有效的页码", "error");
+            inputElement.value = currentPage; // 恢复为跳转前的页码
+          }
+        }
         // --- 界面切换与主题 ---
 
         function showMainScreen() {
@@ -1416,9 +1451,6 @@
 
         /**
          * 绑定查看历史快照的事件
-         */
-        /**
-         * 绑定查看历史快照的事件
          * @param {Array} history - 历史记录数组
          * @param {number} giftIndex - 当前礼金记录在全局 gifts 数组中的索引
          */
@@ -1462,6 +1494,7 @@
          * @param {number} giftIndex
          * @param {'name'|'amount'|'remarks'} fieldType - 要修改的字段类型
          */
+
         function enableInlineEdit(giftIndex, fieldType) {
           const g = gifts[giftIndex].data;
           let targetAreaId, editHtml, saveHandler;
@@ -1480,7 +1513,7 @@
           const cancelHandler = () => showGiftDetailsModal(giftIndex);
 
           const cancelBtnHtml = `<button id="inline-cancel" class="text-sm px-3 py-1 rounded themed-button-secondary border">取消</button>`;
-          const saveBtnHtml = `<button id="inline-save" class="text-sm px-3 py-1 rounded themed-button-primary">验证并保存</button>`;
+          const saveBtnHtml = `<button id="inline-save" class="text-sm px-3 py-1 rounded themed-button-primary">保存</button>`;
 
           // 根据修改类型，定义HTML和保存逻辑
           if (fieldType === "name") {
@@ -1710,16 +1743,9 @@
          */
 
         function executeChunkedPrint(chunkIndex, uiElement) {
-          // 旧的按钮检查 (tagName, disabled) 已被移除。
           if (!uiElement || uiElement.dataset.status === "completed" || uiElement.dataset.status === "printing") {
             return;
           }
-
-          // 现在只处理列表项的状态。
-          uiElement.dataset.status = "printing";
-          uiElement.querySelector(".main-text").textContent = "正在准备打印...";
-          uiElement.classList.remove("themed-link-hover");
-          uiElement.classList.add("cursor-wait");
 
           const start = chunkIndex * PRINT_SPLIT_THRESHOLD;
           const end = Math.min(start + PRINT_SPLIT_THRESHOLD, gifts.length);
@@ -1883,15 +1909,29 @@
               .join("\n"); // 使用换行符分隔每一条记录，在Excel单元格内会自动换行
           };
 
-          // 2. 在 map 中增加 "修改日志" 这一列
           const dataToExport = gifts.map((g) => ({
             姓名: g.data.name,
             金额: g.data.amount,
             收款类型: g.data.type,
             备注: g.data.remarks,
-            最新更新时间: new Date(g.data.timestamp).toLocaleString("zh-CN"), // 将"录入时间"改为"最新更新时间"更准确
-            修改日志: formatHistoryToString(g.data.history), // <-- 新增的列
+            最新更新时间: new Date(g.data.timestamp).toLocaleString("zh-CN"),
+            修改日志: formatHistoryToString(g.data.history),
           }));
+
+          if (dataToExport.length > 0) {
+            const stats = calculateStats();
+
+            // 添加一个空行作为分隔
+            dataToExport.push({});
+
+            // 添加统计信息行
+            dataToExport.push({
+              姓名: "总计",
+              金额: stats.totalAmount,
+              收款类型: `共 ${stats.totalGivers} 人`,
+              // 其他列留空
+            });
+          }
 
           // 3. 创建工作簿和工作表 (这部分不变)
           const worksheet = XLSX.utils.json_to_sheet(dataToExport);
@@ -2408,6 +2448,70 @@
           return true;
         }
 
+        // 用于跟踪当前活动的通知元素和其隐藏计时器
+        let activeNotification = { element: null, timer: null };
+
+        /**
+         * 显示一个全局通知，它会自动替换上一个通知，并在3秒后消失。
+         * @param {string} message - 要显示的消息文本.
+         * @param {'info'|'success'|'error'} type - 通知类型，决定颜色和图标. ('info' 会显示一个加载动画).
+         */
+        function showNotification(message, type = "info") {
+          // 1. 清除上一个通知（如果有），确保屏幕上只有一个
+          if (activeNotification.element) {
+            clearTimeout(activeNotification.timer);
+            activeNotification.element.remove();
+          }
+
+          // 2. 创建新的通知元素
+          const notification = document.createElement("div");
+
+          // --- START: 核心修改 1 ---
+          // 添加 transform 和 -translate-y-full 类，让元素初始时位于屏幕正上方看不见的位置
+          notification.className = "fixed top-5 right-5 flex items-center px-4 py-3 rounded-lg shadow-xl text-white z-[100] transition-all duration-500 ease-in-out opacity-0 -translate-y-full";
+          // --- END: 核心修改 1 ---
+
+          // 3. 根据类型选择样式
+          const styles = {
+            info: { icon: "ri-loader-4-line animate-spin", bg: "bg-blue-600" },
+            success: { icon: "ri-check-line", bg: "bg-green-600" },
+            error: { icon: "ri-error-warning-line", bg: "bg-red-600" },
+          };
+          const style = styles[type] || styles.info;
+          notification.classList.add(style.bg);
+
+          // 4. 设置内容
+          notification.innerHTML = `
+        <i class="${style.icon} text-xl mr-3"></i>
+        <span>${message}</span>
+    `;
+
+          // 5. 添加到页面，并触发“出现”动画
+          document.body.appendChild(notification);
+          setTimeout(() => {
+            // --- START: 核心修改 2 ---
+            // 移除 opacity-0 和 -translate-y-full
+            // 这会触发 CSS transition，让元素平滑移动到 translate-y-0 (原始位置) 并变为不透明
+            notification.classList.remove("opacity-0", "-translate-y-full");
+            // --- END: 核心修改 2 ---
+          }, 10); // 短暂延迟确保元素已渲染
+
+          // 6. 设置3秒后自动关闭的计时器
+          const timer = setTimeout(() => {
+            // --- START: 核心修改 3 ---
+            // 重新添加这两个类，触发“消失”动画，元素向上滑出并变为透明
+            notification.classList.add("opacity-0", "-translate-y-full");
+            // --- END: 核心修改 3 ---
+
+            // 动画结束后，从 DOM 中移除该元素
+            notification.addEventListener("transitionend", () => notification.remove());
+            activeNotification = { element: null, timer: null };
+          }, 3000); // 持续时间调整为3秒
+
+          // 7. 保存对当前通知的引用
+          activeNotification = { element: notification, timer: timer };
+        }
+
         /**
          * 获取并填充所有可用的中文语音到指定的 <select> 元素中。
          * @param {HTMLSelectElement} selectElement - 用于填充音色的下拉框元素。
@@ -2542,6 +2646,43 @@
               }
             }
           });
+
+          //分页输入框的事件委托 ---
+          dom.pageInfoEl.addEventListener("focusout", (e) => {
+            // focusout 事件会冒泡，适合委托
+            if (e.target && e.target.id === "current-page-input") {
+              handlePageInputChange(e);
+            }
+          });
+
+          dom.pageInfoEl.addEventListener("keydown", (e) => {
+            if (e.target && e.target.id === "current-page-input" && e.key === "Enter") {
+              e.preventDefault(); // 阻止回车键的默认行为（如表单提交）
+              handlePageInputChange(e);
+              e.target.blur(); // 触发 blur，同时也让输入框失去焦点
+            }
+          });
+          // 全屏功能监听
+          dom.fullscreenBtn.addEventListener("click", () => {
+            if (!document.fullscreenElement) {
+              document.documentElement.requestFullscreen();
+            } else if (document.exitFullscreen) {
+              document.exitFullscreen();
+            }
+          });
+
+          // 监听全屏状态变化 (例如用户按 ESC 退出)，自动切换图标
+          document.addEventListener("fullscreenchange", () => {
+            const isFullscreen = !!document.fullscreenElement;
+            if (isFullscreen) {
+              dom.fullscreenIcon.classList.remove("ri-fullscreen-line");
+              dom.fullscreenIcon.classList.add("ri-fullscreen-exit-line");
+            } else {
+              dom.fullscreenIcon.classList.remove("ri-fullscreen-exit-line");
+              dom.fullscreenIcon.classList.add("ri-fullscreen-line");
+            }
+          });
+
           // 为创建页面的语音预览按钮绑定事件
           dom.previewCreateVoiceBtn.addEventListener("click", () => {
             previewSelectedVoice(dom.eventVoiceSelect);
