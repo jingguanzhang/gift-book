@@ -1,9 +1,14 @@
 # 电子礼簿系统
 
 一款开源、免费、完全本地运行的单页 Web 应用，旨在为各类红白喜事（如婚庆、寿宴、白事等）提供一个现代化、安全、高效的礼金（份子钱）管理解决方案。它彻底告别了传统的手写礼簿，通过数字化的方式解决了记录、统计、查询和存档的全部流程，同时以**数据安全**和**用户隐私**为最高设计原则。
+网页版演示： https://jingguanzhang.github.io/gift-book/
+
+**本源码只能用于您自己（个人或单位）学习、研究或二次开发后自己使用，或分享给他人免费使用。**
+
+**禁止任何形式的商业转售行为： 严禁将源码或基于源码二次开发的产品再次公开出售或发布，进行盈利（包括但不限于二次发布、出售二次开发后的产品）。**
+
 
 **本系统无需任何网络连接，所有数据均加密存储在您自己的浏览器中，确保信息永不泄露。**
-网页版演示： https://jingguanzhang.github.io/gift-book/
 <img width="1222" height="861" src="https://github.com/user-attachments/assets/35858ab2-8896-47f1-8539-f64272e79c40" />
 <img width="1509" height="868"  src="https://github.com/user-attachments/assets/a4027dd4-c727-4975-8f2e-01c72af32313" />
 <img width="851" height="976" src="https://github.com/user-attachments/assets/07f9eb10-1c10-44ca-aa0f-d03a7802ade6" />
