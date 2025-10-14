@@ -2732,6 +2732,13 @@
               }
               // Enter 键确认弹窗 (文本域除外)
               if (e.key === "Enter" && activeElement.tagName !== "TEXTAREA") {
+                // 检查当前模态框是否是统计模态框
+                const modalTitle = dom.modalTitle.textContent;
+                if (modalTitle.includes("统计")) {
+                  // 如果是统计模态框，不执行任何操作
+                  return;
+                }
+                
                 e.preventDefault();
                 dom.modalActions.querySelector("button:last-child")?.click();
               }
