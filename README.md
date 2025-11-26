@@ -74,7 +74,7 @@
 
 ```
 # 克隆项目
-git clone [https://github.com/jingguanzhang/gift-book.git
+git clone https://github.com/jingguanzhang/gift-book.git
 
 # 进入目录
 cd gift-book
@@ -120,7 +120,6 @@ cd gift-book
 
 * **直接上传**：将所有文件上传至 GitHub Pages、Vercel、Nginx 或任何静态文件服务器。
 * **无需编译**：不需要执行 `build` 命令，源码即产物。
-
 
 
 ---
