@@ -2338,7 +2338,15 @@
             const pdfBytes = await app.pdfGenerator.generate(data, generatorOptions);
             const blob = new Blob([pdfBytes], { type: "application/pdf" });
             const pdfUrl = URL.createObjectURL(blob);
-            window.open(pdfUrl, "_blank");
+            const link = document.createElement("a");
+            link.href = pdfUrl;
+            const safeEventName = (app.currentEvent.name || "礼簿").replace(/[\\/:*?"<>|]/g, "_");
+            const dateStr = eventDateInfo.localeDate.replace(/\//g, "-"); 
+            const partSuffix = partIndex ? `_Part${partIndex}` : "";
+            link.download = `${safeEventName}_礼金记录_${dateStr}${partSuffix}.pdf`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
           } catch (error) {
             console.error(error);
             app.ui.showNotification("生成 PDF 时出现错误，请重试。", "error");
