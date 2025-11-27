@@ -4650,9 +4650,9 @@
                 },
               ]
             : [
-              { text: '<i class="ri-delete-bin-line mr-1"></i>作废此记录', class: "themed-button-secondary border px-4 py-2 rounded mr-auto", handler:() => this.giftManager.abolishGift(giftIndex),  keepOpen: true,},
-              { text: "关闭", class: "themed-button-secondary border px-4 py-2 rounded" }
-            ];
+                { text: '<i class="ri-delete-bin-line mr-1"></i>作废此记录', class: "themed-button-secondary border px-4 py-2 rounded mr-auto", handler: () => this.giftManager.abolishGift(giftIndex), keepOpen: true },
+                { text: "关闭", class: "themed-button-secondary border px-4 py-2 rounded" },
+              ];
 
           this.ui.showModal(`${g.name} 的礼金详情 ${hasHistory ? '<p class="text-sm text-orange-600 font-normal">（警告：此宾客数据存在修改，请自行验证数据真实性！）</p>' : ""}`, modalContent, modalButtons);
 
@@ -5770,6 +5770,11 @@
          */
         populateVoiceList(targetSelect = this.ui.elements.eventVoiceSelect, selectedValue = targetSelect?.value || "") {
           if (!targetSelect) return;
+          if (!("speechSynthesis" in window)) {
+            // 如果不支持语音，直接清空或显示默认，并退出函数防止报错
+            targetSelect.innerHTML = '<option value="">设备不支持语音</option>';
+            return;
+          }
           const voices = speechSynthesis.getVoices().filter((v) => v.lang.startsWith("zh"));
           const fragment = document.createDocumentFragment();
           const defaultOption = document.createElement("option");
@@ -6520,7 +6525,7 @@
         });
 
       // 语音列表更新
-      if (speechSynthesis.onvoiceschanged !== undefined) {
+      if ("speechSynthesis" in window && window.speechSynthesis && speechSynthesis.onvoiceschanged !== undefined) {
         speechSynthesis.onvoiceschanged = () => {
           app.populateVoiceList();
           const editVoiceSelect = document.getElementById("edit-event-voice");
