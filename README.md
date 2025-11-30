@@ -56,6 +56,8 @@
 本系统由纯静态文件组成，**无需安装任何环境**。
 
 1. **下载**：从本项目Releases页面下载的windows预编译应用(exe)
+https://github.com/jingguanzhang/gift-book/releases/download/1.1/gift-book.exe
+
 2. **运行**：直接双击程序。
 3. **初始化**：
    * 设置事项名称及**管理密码**（请务必牢记，丢失无法找回）。
