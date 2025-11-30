@@ -45,9 +45,11 @@
 ---
 
 ## 📸 界面预览
-<img width="1222" height="861" src="https://github.com/user-attachments/assets/35858ab2-8896-47f1-8539-f64272e79c40" />
-<img width="1509" height="868"  src="https://github.com/user-attachments/assets/a4027dd4-c727-4975-8f2e-01c72af32313" />
-<img width="851" height="976" src="https://github.com/user-attachments/assets/07f9eb10-1c10-44ca-aa0f-d03a7802ade6" />
+
+<img width="1310" height="978" alt="QQ截图20251130181935" src="https://github.com/user-attachments/assets/b00c5369-5a47-4d19-b70a-f5c89d7912ad" />
+
+<img width="1047" height="736" alt="QQ截图20251130181740" src="https://github.com/user-attachments/assets/113fb4f7-fe35-4a09-b2d8-0765bc93f535" />
+<img width="1053" height="744" alt="QQ截图20251130181723" src="https://github.com/user-attachments/assets/2f7c22b7-2237-4a6c-97b3-b794b576981d" />
 
 ## 🚀 快速上手
 
