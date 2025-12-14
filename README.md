@@ -4,6 +4,9 @@
 
 [在线演示](https://jingguanzhang.github.io/gift-book/)
 
+![unnamed](https://github.com/user-attachments/assets/1ebb4003-3dd5-442e-bc65-066ea17958eb)
+
+
 > **严正声明**
 > 
 > 本项目开源仅供**个人学习、研究或自用**。
