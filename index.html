@@ -102,7 +102,7 @@
 
       #gift-book-content {
         display: grid;
-        grid-template-rows: 3fr 1fr 3fr;
+        grid-template-rows: 1.5fr 1fr 3fr;
         border-top: 2px solid var(--primary-border-color);
         min-height: 0;
       }
@@ -114,7 +114,10 @@
         flex: 1;
       }
 
-      .print-book-content > .gift-book-row:first-child,
+      .print-book-content > .gift-book-row:first-child {
+        flex: 0.5;
+        min-height: 0;
+      }
       .print-book-content > .gift-book-row:last-child {
         flex: 1;
         min-height: 0;
@@ -125,7 +128,6 @@
         display: grid;
         grid-template-columns: repeat(var(--gift-grid-columns, 12), minmax(0, 1fr));
       }
-      .gift-book-row:nth-child(1),
       .gift-book-row:nth-child(3) {
         min-height: 33.3%;
       }
@@ -139,7 +141,7 @@
       .book-cell {
         border-right: 2px solid var(--primary-border-color);
         border-bottom: 2px solid var(--primary-border-color);
-        display: grid;
+        /* display: grid; */
         place-items: center;
         writing-mode: vertical-lr;
         text-orientation: mixed;
@@ -147,7 +149,7 @@
         font-size: clamp(16px, 1.6vw, 25px);
         letter-spacing: 7px;
         font-family: "KaiTi", "楷体", serif;
-        padding: 10px 0;
+        /* padding: 10px 0; */
         overflow: hidden;
         text-align: center;
       }
@@ -161,8 +163,13 @@
       }
 
       .name-cell .name {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        width: 100%;
+        height: 100%;
         color: var(--name-color);
-        padding: 15px 0;
+        padding: 30px 0;
         cursor: pointer;
         text-align: center;
         white-space: nowrap;
@@ -177,20 +184,34 @@
         padding: 10px 4px;
         font-family: var(--type-font-family);
         font-weight: bold;
+        width: 100%;
+        height: 100%;
+        box-sizing: border-box;
+        display: flex;
+        justify-content: center;
+        align-items: center;
       }
 
       .amount-cell {
+        display: flex;
         color: #333;
         cursor: pointer;
         grid-template-columns: 1fr auto;
         column-gap: clamp(8px, 1.5vw, 18px);
         justify-content: center;
+        padding-bottom: 30px;
       }
 
       .amount-chinese {
+        width: 100%;
+        height: 0;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        flex-wrap: wrap;
         letter-spacing: 1.5px;
         text-align: center;
-        padding: 15px 0;
+        padding: 15px 0 30px;
         flex: 1;
         overflow: hidden;
         font-size: var(--amount-chinese-font-size);
@@ -201,11 +222,19 @@
         color: #555;
         letter-spacing: 1px;
         writing-mode: horizontal-tb;
-        line-height: 3;
+        line-height: 1.2;
         font-size: clamp(10px, 1.3vw, 14px);
+        position: absolute;
+        bottom: 0.5vw;
+        left: 0;
+        text-align: center;
+        width: 100%;
+        white-space: wrap;
+        word-break: break-all;
       }
 
       .mark {
+        width: 100%;
         font-size: clamp(10px, 1.3vw, 14px);
         letter-spacing: 1px;
         color: var(--primary-color);
@@ -216,7 +245,8 @@
         flex-direction: column;
         justify-content: center;
         position: absolute;
-        bottom: 1vw;
+        left: 0;
+        bottom: 0.5vw;
         writing-mode: lr;
       }
 
@@ -339,13 +369,13 @@
       /* ==================== 缩放样式 ==================== */
       .amount-chinese.scale,
       .name.scale {
-        font-size: 14pt;
+        font-size: 15pt;
         letter-spacing: -2px;
         padding: 5px 0;
       }
       .amount-numeric.scale {
         letter-spacing: 0.5px;
-        writing-mode: vertical-rl;
+        /* writing-mode: vertical-rl; */
       }
       /* ==================== 响应式 ==================== */
       @media (max-width: 700px) {
@@ -1577,8 +1607,8 @@
           const displayName = g.name.length === 2 ? `${g.name[0]}\u3000${g.name[1]}` : g.name;
           return {
             nameHTML: `<div class="name ${g.name.length > 4 ? "scale" : ""} ${nameClasses}">${displayName}</div>${statusIndicators}`,
-            amountHTML: `<div class="amount-chinese ${amountChinese.length > 16 ? "scale" : ""} ${amountClasses}">${amountChinese}</div>
-                      <div class="amount-numeric ${Math.abs(g.amount).toString().length > 8 ? "scale" : ""} ${amountClasses}">￥${g.amount}</div>`,
+            amountHTML: `<div class="amount-chinese ${amountChinese.length > 14 ? "scale" : ""} ${amountClasses}">${amountChinese}</div>
+                      <div class="amount-numeric ${Math.abs(g.amount).toString().length > 6 ? "scale" : ""} ${amountClasses}">￥${g.amount}</div>`,
             giftIndex,
           };
         }
@@ -2388,7 +2418,7 @@
             };
             const eventDateInfo = Utils.getEventDateInfo(app.currentEvent.startDateTime);
 
-            document.title = `${app.currentEvent.name}礼金记录{partIndex ? "-P" + partIndex : ""}-${eventDateInfo.localeDate}`;
+            document.title = `${app.currentEvent.name}礼金记录${partIndex ? "-P" + partIndex : ""}-${eventDateInfo.localeDate}`;
 
             // 封面页
             if (printOptions.printCover) {
