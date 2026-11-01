@@ -709,6 +709,7 @@
                 </div>
                 <button id="print-btn" class="w-full themed-button-primary p-3 rounded-lg">打印/另存为PDF</button>
                 <button id="export-excel-btn" class="w-full border themed-button-secondary p-3 rounded-lg">导出为 Excel</button>
+                <button id="import-excel-btn" class="w-full border themed-button-secondary p-3 rounded-lg">Excel 导入</button>
                 <button id="stats-btn" class="w-full themed-button-primary p-3 rounded-lg">查看统计</button>
                 <div class="flex items-center justify-between bg-gray-100 p-3 rounded-lg">
                   <span class="font-medium text-gray-700">语音播报</span>
@@ -1199,6 +1200,7 @@
             eventDropdown: $("event-dropdown"),
             printBtn: $("print-btn"),
             exportExcelBtn: $("export-excel-btn"),
+            importExcelBtn: $("import-excel-btn"),
             statsBtn: $("stats-btn"),
             searchNameInput: $("search-name"),
             searchIcon: $("search-icon"),
@@ -2845,6 +2847,181 @@
         }
 
         /**
+         * 显示 Excel 导入弹窗
+         * 支持多文件合并导入（多收礼台事后合并），兼容本应用导出格式与简化格式
+         */
+        showExcelImportModal() {
+          const app = this.app;
+          if (!app.currentEvent) return;
+
+          this._excelBatch = null;
+
+          const modalContent = `
+                        <div class="space-y-4 text-left">
+                          <p class="text-sm text-gray-600">选择一个或多个 Excel 文件合并导入到当前事项（如多个收礼台各自记录的事后合并）。兼容本应用「导出为 Excel」的文件格式，也支持简化格式（姓名 / 金额 / 收款类型 / 备注）。</p>
+                          <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">选择 Excel 文件（可多选）</label>
+                            <input type="file" id="excel-import-files" accept=".xlsx,.xls" multiple class="w-full text-sm text-gray-600 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-gray-200 file:text-gray-700 hover:file:bg-gray-300" />
+                          </div>
+                          <div id="excel-import-preview" class="hidden max-h-56 overflow-y-auto border rounded p-2 text-xs text-gray-600"></div>
+                          <p class="text-xs text-gray-400">自动跳过“总计”行、作废行，以及与现有记录“姓名+金额”重复的行；登记时间保留 Excel 中的原时间。</p>
+                        </div>
+                      `;
+
+          app.ui.showModal("Excel 导入", modalContent, [
+            { text: "关闭", class: "themed-button-secondary border px-4 py-2 rounded" },
+            {
+              text: "开始导入",
+              class: "themed-button-primary px-4 py-2 rounded",
+              keepOpen: true,
+              handler: async () => {
+                const batch = this._excelBatch;
+                if (!batch || !batch.records.length) {
+                  app.ui.showNotification("请先选择 Excel 文件并完成解析。", "error");
+                  return;
+                }
+                const result = await this.importGiftRecordsFromExcel(batch);
+                app.ui.closeModal();
+                app.ui.showNotification(`导入完成：新增 ${result.imported} 条，跳过重复 ${result.duplicateCount} 条。`, "success");
+              },
+            },
+          ]);
+
+          const fileInput = document.getElementById("excel-import-files");
+          const preview = document.getElementById("excel-import-preview");
+          if (fileInput && preview) {
+            fileInput.addEventListener("change", async () => {
+              if (!fileInput.files?.length) return;
+              preview.classList.remove("hidden");
+              preview.innerHTML = '<p class="text-gray-400">解析中...</p>';
+              try {
+                this._excelBatch = await this.parseExcelFiles(fileInput.files);
+                const { records, report } = this._excelBatch;
+                const fileLines = report.byFile.map((f) => `<p>📄 ${f.file}：${f.count} 条</p>`).join("");
+                preview.innerHTML = `
+                                <p class="font-medium text-gray-700">共解析 ${records.length} 条有效记录</p>
+                                ${fileLines}
+                                <p class="text-gray-400 mt-1">作废行跳过 ${report.abolishedSkipped} 条，无效行 ${report.invalid} 条。开始导入后将自动跳过与现有记录重复的行。</p>`;
+              } catch (error) {
+                console.error("Excel 解析失败:", error);
+                this._excelBatch = null;
+                preview.innerHTML = '<p class="text-red-600">解析失败，请确认文件为有效的 Excel 格式。</p>';
+              }
+            });
+          }
+        }
+
+        /**
+         * 解析 Excel 文件（可多份），提取礼金记录
+         */
+        async parseExcelFiles(fileList) {
+          const files = Array.from(fileList);
+          const records = [];
+          const report = { byFile: [], invalid: 0, abolishedSkipped: 0 };
+
+          for (const file of files) {
+            const buf = await file.arrayBuffer();
+            const wb = XLSX.read(buf, { type: "array", cellDates: true });
+            const ws = wb.Sheets[wb.SheetNames[0]];
+            if (!ws) continue;
+            const rows = XLSX.utils.sheet_to_json(ws, { defval: "" });
+            let count = 0;
+
+            for (const row of rows) {
+              const name = String(row["姓名"] ?? row["名字"] ?? "").trim();
+              if (!name || name.startsWith("总计")) continue; // 跳过空行与导出文件末尾的总计行
+              const amount = parseFloat(row["金额"]);
+              if (isNaN(amount) || amount < 0) { report.invalid++; continue; }
+              if (String(row["状态"] ?? "").trim() === "已作废") { report.abolishedSkipped++; continue; }
+
+              let type = String(row["收款类型"] ?? row["渠道"] ?? "").trim();
+              if (!type) type = "现金";
+              else if (type.includes("微信")) type = "微信";
+              else if (type.includes("支付宝")) type = "支付宝";
+              else if (type.includes("现金")) type = "现金";
+              else if (type !== "其他") type = "其他";
+
+              let timestamp = new Date().toISOString();
+              const t = row["登记时间"];
+              if (t instanceof Date && !isNaN(t)) {
+                timestamp = t.toISOString();
+              } else if (t && String(t).trim()) {
+                const d = new Date(String(t).trim().replace(/\//g, "-"));
+                if (!isNaN(d)) timestamp = d.toISOString();
+              }
+
+              const remarkData = {};
+              const remarkMap = { custom: "备注", gift: "礼品", relation: "关系", phone: "电话", address: "住址" };
+              for (const [key, col] of Object.entries(remarkMap)) {
+                const v = String(row[col] ?? "").trim();
+                if (v) remarkData[key] = v;
+              }
+
+              const levelName = String(row["宾客等级"] ?? "").trim();
+              let guestLevel = CONFIG.GUEST_LEVELS.indexOf(levelName);
+              if (guestLevel < 0) guestLevel = 0;
+
+              records.push({ name, amount, type, remarkData, timestamp, guestLevel });
+              count++;
+            }
+            report.byFile.push({ file: file.name, count });
+          }
+          return { records, report };
+        }
+
+        /**
+         * 将解析出的记录加密入库，自动跳过与现有记录“姓名+金额”重复的行
+         */
+        async importGiftRecordsFromExcel(batch) {
+          const app = this.app;
+          const existingKeys = new Set(
+            app.gifts.filter((g) => g.data && g.data.abolished !== true).map((g) => `${g.data.name}|${g.data.amount}`)
+          );
+          const seenInBatch = new Set();
+          const toImport = [];
+          let duplicateCount = 0;
+          const duplicateSamples = [];
+
+          for (const r of batch.records) {
+            const key = `${r.name}|${r.amount}`;
+            if (existingKeys.has(key) || seenInBatch.has(key)) {
+              duplicateCount++;
+              if (duplicateSamples.length < 5) duplicateSamples.push(`${r.name} ¥${r.amount}`);
+              continue;
+            }
+            seenInBatch.add(key);
+            toImport.push(r);
+          }
+
+          for (const r of toImport) {
+            const fullGiftData = {
+              name: r.name,
+              amount: r.amount,
+              type: r.type,
+              remarkData: r.remarkData,
+              timestamp: r.timestamp,
+              guestLevel: r.guestLevel,
+            };
+            const encryptedData = CryptoService.encrypt(fullGiftData, app.currentPassword);
+            await app.giftRepository.createGift({
+              eventId: app.currentEvent.id,
+              encryptedData,
+              guestLevelWeight: r.guestLevel,
+              levelUpdateTime: 0,
+            });
+          }
+
+          if (toImport.length) {
+            await app.giftManager.loadGiftsForCurrentEvent();
+            app.giftManager.render();
+            app.guestScreenService.syncToGuestScreen();
+            app.session.save(app.currentEvent, app.currentPassword);
+          }
+
+          return { imported: toImport.length, duplicateCount, duplicateSamples };
+        }
+
+        /**
          * 首次打印前提示用户确认引擎与记账人信息
          * 缓存结果以避免重复弹窗
          */
@@ -4041,6 +4218,7 @@
           // 功能按钮
           this.ui.elements.printBtn.addEventListener("click", () => this.exportService.prepareForPrint());
           this.ui.elements.exportExcelBtn.addEventListener("click", () => this.exportService.exportToExcel());
+          this.ui.elements.importExcelBtn.addEventListener("click", () => this.exportService.showExcelImportModal());
           this.ui.elements.statsBtn.addEventListener("click", () => this.statsService.showStatistics());
           this.ui.elements.searchIcon.addEventListener("click", () => this.handleSearch());
           this.ui.elements.searchNameInput.addEventListener("keyup", (e) => e.key === "Enter" && this.handleSearch());
