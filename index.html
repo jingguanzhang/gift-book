@@ -2129,7 +2129,11 @@
           const selectedEngine = app.currentEvent.printOptions?.pdfEngine || "browser";
           const shouldUsePdfLib = Utils.isMobile() || selectedEngine === "pdf-lib";
 
-          if (shouldUsePdfLib) {
+          // 以本地文件(file://)方式打开时，浏览器安全策略禁止 fetch 本地字体文件，PDF-LIB 引擎无法工作
+          if (shouldUsePdfLib && !Utils.isMobile() && location.protocol === "file:") {
+            app.ui.showNotification("当前以本地文件方式打开，已自动改用“浏览器另存为PDF”引擎。", "info");
+            app.exportService.executePrint(0, app.gifts.length);
+          } else if (shouldUsePdfLib) {
             // 移动端或强制 PDF-LIB 情况下直接生成 PDF
             app.exportService.generatePdf(0, app.gifts.length);
           } else {
@@ -2181,7 +2185,11 @@
 
                 const selectedEngine = app.currentEvent.printOptions?.pdfEngine || "browser";
                 const usePdfLib = Utils.isMobile() || selectedEngine === "pdf-lib";
-                if (usePdfLib) {
+                // 以本地文件(file://)方式打开时，浏览器安全策略禁止 fetch 本地字体文件，PDF-LIB 引擎无法工作
+                if (usePdfLib && !Utils.isMobile() && location.protocol === "file:") {
+                  app.ui.showNotification("当前以本地文件方式打开，已自动改用“浏览器另存为PDF”引擎。", "info");
+                  await app.exportService.executePrint(start, end, partIndex, totalChunks);
+                } else if (usePdfLib) {
                   await app.exportService.generatePdf(start, end, partIndex);
                 } else {
                   await app.exportService.executePrint(start, end, partIndex, totalChunks);
@@ -2856,8 +2864,17 @@
             };
             const currentPrintEndPage = !!currentPrintOptions.printEndPage;
 
+            const isFileProtocol = location.protocol === "file:";
             const engineSelector = isMobile
               ? `<p class="text-sm text-gray-600 bg-red-50 border border-red-200 rounded p-3">检测到移动端环境，系统将自动使用 <strong>PDF-LIB</strong> 引擎导出。</p>`
+              : isFileProtocol
+              ? `<div class="space-y-2">
+                              <label class="flex items-center gap-2 cursor-pointer">
+                                <input type="radio" name="print-engine-select" value="browser" class="themed-text-radio themed-ring" checked>
+                                <span class="text-sm">浏览器另存为PDF（文件小,不兼容移动端）</span>
+                              </label>
+                              <p class="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2">当前以本地文件（双击）方式打开：受浏览器安全策略限制，PDF-LIB 引擎无法加载本地字体，已固定使用浏览器打印。如需 PDF-LIB 引擎，请通过本地服务（http://）访问。</p>
+                            </div>`
               : `<div class="space-y-2">
                               <label class="flex items-center gap-2 cursor-pointer">
                                 <input type="radio" name="print-engine-select" value="browser" class="themed-text-radio themed-ring" ${currentEngine === "browser" ? "checked" : ""}>
@@ -6208,11 +6225,15 @@
                   <input type="radio" name="edit-pdf-engine" value="browser" class="themed-text-radio themed-ring">
                   <span>浏览器另存为PDF（文件小,不兼容移动端）</span>
                 </label>
+                ${location.protocol === "file:" ? `
+                <p class="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2">当前以本地文件（双击）方式打开：受浏览器安全策略限制，PDF-LIB 引擎无法加载本地字体，已固定使用浏览器打印。</p>
+                ` : `
                 <label class="flex items-center gap-2 cursor-pointer">
                   <input type="radio" name="edit-pdf-engine" value="pdf-lib" class="themed-text-radio themed-ring">
                   <span>PDF-LIB.JS引擎（文件稍大,兼容PC/移动端）</span>
                 </label>
                 <p class="text-xs text-gray-500">浏览器另存为PDF文件较小，不兼容移动端，PDF-LIB.JS生成的pdf文件稍大,支持多平台</p>
+                `}
               </div>
           </div>
         </div>
